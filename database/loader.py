@@ -1,21 +1,92 @@
+"""
+Database Loader Module for SmartGrowth AI
+
+This module contains functions to load and clean data.
+It's imported by setup_database.py - don't run this directly.
+"""
+
 import pandas as pd
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
+import os
+import logging
 
-# Database connection URL
-# Replace 'username', 'password', 'localhost', and 'dbname' with your Postgres details
-engine = create_engine('postgresql://username:password@localhost:5432/smartgrowth_db')
+logger = logging.getLogger(__name__)
 
-# Load the CSV
-df = pd.read_csv('data/Telco-Customer-Churn.csv')
+def clean_customer_data(df):
+    """Clean and transform the customer data"""
+    logger.info("Cleaning and transforming data...")
+    
+    # Select relevant columns
+    df_customers = df[['customerID', 'gender', 'SeniorCitizen', 'Partner', 'Dependents', 
+                       'tenure', 'Contract', 'MonthlyCharges', 'TotalCharges', 'Churn']].copy()
+    
+    # Rename columns to match SQL schema
+    df_customers.columns = ['customer_id', 'gender', 'senior_citizen', 'partner', 'dependents', 
+                            'tenure_months', 'subscription_type', 'monthly_charges', 'total_charges', 'churn_status']
+    
+    # Convert data types
+    df_customers['senior_citizen'] = df_customers['senior_citizen'].astype(bool)
+    df_customers['partner'] = df_customers['partner'].map({'Yes': True, 'No': False})
+    df_customers['dependents'] = df_customers['dependents'].map({'Yes': True, 'No': False})  
+    df_customers['churn_status'] = df_customers['churn_status'].map({'Yes': True, 'No': False})
+    
+    # Handle TotalCharges column (some entries are spaces, need to convert to numeric)
+    df_customers['total_charges'] = pd.to_numeric(df_customers['total_charges'], errors='coerce')
+    
+    # Fill missing total_charges with calculated value
+    missing_total = df_customers['total_charges'].isna().sum()
+    if missing_total > 0:
+        logger.info(f"Found {missing_total} missing total_charges values - filling with calculated values")
+        df_customers['total_charges'] = df_customers['total_charges'].fillna(
+            df_customers['monthly_charges'] * df_customers['tenure_months']
+        )
+    
+    return df_customers
 
-# Clean columns to match our schema
-df_customers = df[['customerID', 'gender', 'SeniorCitizen', 'Partner', 'Dependents', 
-                   'tenure', 'Contract', 'MonthlyCharges', 'TotalCharges', 'Churn']]
-
-# Rename columns to match SQL
-df_customers.columns = ['customer_id', 'gender', 'senior_citizen', 'partner', 'dependents', 
-                        'tenure_months', 'subscription_type', 'monthly_charges', 'total_charges', 'churn_status']
-
-# Push to Postgres
-df_customers.to_sql('dim_customers', engine, if_exists='append', index=False)
-print("✅ Successfully loaded real customer data into Postgres!")
+def load_customer_data(engine):
+    """Load customer churn data from CSV into database"""
+    try:
+        # Check if file exists
+        csv_path = 'data/WA_Fn-UseC_-Telco-Customer-Churn.csv'
+        if not os.path.exists(csv_path):
+            logger.error(f"CSV file not found: {csv_path}")
+            return False
+            
+        # Load the CSV
+        logger.info(f"Loading data from {csv_path}")
+        df = pd.read_csv(csv_path)
+        logger.info(f"Loaded {len(df)} rows from CSV")
+        
+        # Display basic info about the dataset
+        logger.info("Dataset columns: " + str(list(df.columns)))
+        logger.info(f"Dataset shape: {df.shape}")
+        
+        # Clean the data
+        df_customers = clean_customer_data(df)
+        
+        # Display data quality info
+        logger.info("Data quality check:")
+        logger.info(f"  - Missing values: {df_customers.isnull().sum().sum()}")
+        logger.info(f"  - Duplicate customer_ids: {df_customers['customer_id'].duplicated().sum()}")
+        logger.info(f"  - Churn rate: {df_customers['churn_status'].mean():.2%}")
+        
+        # Push to database
+        logger.info("Loading data into database...")
+        df_customers.to_sql('dim_customers', engine, if_exists='replace', index=False)
+        
+        # Verify the load using text() wrapper
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT COUNT(*) FROM dim_customers")).fetchone()
+            loaded_count = result[0]
+            
+        logger.info(f"✅ Successfully loaded {loaded_count} customer records into database!")
+        
+        # Show sample data
+        logger.info("\nSample of loaded data:")
+        print(df_customers.head())
+        
+        return True, loaded_count
+        
+    except Exception as e:
+        logger.error(f"❌ Error loading customer data: {e}")
+        return False, 0
