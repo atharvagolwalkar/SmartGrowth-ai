@@ -7,13 +7,39 @@ supporting development, staging, and production environments.
 
 import os
 from typing import Optional, List
-from pydantic import BaseSettings, Field
+from pydantic import Field, field_validator
+
+try:
+    from pydantic_settings import BaseSettings, SettingsConfigDict
+except ImportError:  # pragma: no cover - fallback for older environments
+    from pydantic import BaseSettings  # type: ignore
+    SettingsConfigDict = None  # type: ignore
+
+
+BOOLEAN_TRUE_VALUES = {"1", "true", "yes", "on", "debug", "development"}
+BOOLEAN_FALSE_VALUES = {"0", "false", "no", "off", "release", "prod", "production"}
+
+
+def _coerce_bool(value):
+    """Parse loose environment boolean values without crashing imports."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in BOOLEAN_TRUE_VALUES:
+            return True
+        if normalized in BOOLEAN_FALSE_VALUES:
+            return False
+    return value
 
 class DatabaseConfig(BaseSettings):
     """Database configuration"""
     db_path: str = Field(default="smartgrowth.db", description="Database file path")
     db_url: Optional[str] = Field(default=None, description="Full database URL override")
     connection_timeout: int = Field(default=30, description="Connection timeout in seconds")
+
+    if SettingsConfigDict:
+        model_config = SettingsConfigDict(env_prefix="DATABASE_")
     
     @property
     def database_url(self) -> str:
@@ -28,9 +54,9 @@ class MLModelConfig(BaseSettings):
     default_threshold: float = Field(default=0.5, description="Default prediction threshold")
     batch_size: int = Field(default=100, description="Batch prediction size limit")
     model_cache_ttl: int = Field(default=3600, description="Model cache TTL in seconds")
-    
-    class Config:
-        env_prefix = "ML_"
+
+    if SettingsConfigDict:
+        model_config = SettingsConfigDict(env_prefix="ML_", protected_namespaces=())
 
 class APIConfig(BaseSettings):
     """API configuration"""
@@ -40,9 +66,14 @@ class APIConfig(BaseSettings):
     reload: bool = Field(default=False, description="Auto-reload on changes")
     log_level: str = Field(default="info", description="Logging level")
     cors_origins: List[str] = Field(default=["*"], description="CORS allowed origins")
-    
-    class Config:
-        env_prefix = "API_"
+
+    if SettingsConfigDict:
+        model_config = SettingsConfigDict(env_prefix="API_")
+
+    @field_validator("debug", "reload", mode="before")
+    @classmethod
+    def parse_bool_fields(cls, value):
+        return _coerce_bool(value)
 
 class DashboardConfig(BaseSettings):
     """Dashboard configuration"""
@@ -50,9 +81,9 @@ class DashboardConfig(BaseSettings):
     port: int = Field(default=8501, description="Dashboard port")
     api_base_url: str = Field(default="http://localhost:8000", description="Backend API URL")
     page_title: str = Field(default="SmartGrowth AI Dashboard", description="Dashboard page title")
-    
-    class Config:
-        env_prefix = "DASHBOARD_"
+
+    if SettingsConfigDict:
+        model_config = SettingsConfigDict(env_prefix="DASHBOARD_")
 
 class LoggingConfig(BaseSettings):
     """Logging configuration"""
@@ -61,9 +92,9 @@ class LoggingConfig(BaseSettings):
     file_path: Optional[str] = Field(default=None, description="Log file path")
     max_bytes: int = Field(default=10485760, description="Max log file size (10MB)")
     backup_count: int = Field(default=5, description="Number of backup log files")
-    
-    class Config:
-        env_prefix = "LOG_"
+
+    if SettingsConfigDict:
+        model_config = SettingsConfigDict(env_prefix="LOG_")
 
 class SmartGrowthConfig(BaseSettings):
     """Main configuration class"""
@@ -79,10 +110,19 @@ class SmartGrowthConfig(BaseSettings):
     dashboard: DashboardConfig = Field(default_factory=DashboardConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    if SettingsConfigDict:
+        model_config = SettingsConfigDict(
+            env_file=".env",
+            env_file_encoding="utf-8",
+            case_sensitive=False,
+            extra="ignore",
+            protected_namespaces=()
+        )
+
+    @field_validator("debug", mode="before")
+    @classmethod
+    def parse_debug_field(cls, value):
+        return _coerce_bool(value)
     
     @property
     def is_development(self) -> bool:
@@ -100,7 +140,7 @@ class SmartGrowthConfig(BaseSettings):
             return self.database.db_path
         
         # Make relative to project root
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        project_root = os.path.dirname(os.path.abspath(__file__))
         return os.path.join(project_root, self.database.db_path)
     
     def get_model_path(self) -> str:
@@ -109,7 +149,7 @@ class SmartGrowthConfig(BaseSettings):
             return self.ml_model.model_path
         
         # Make relative to project root
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        project_root = os.path.dirname(os.path.abspath(__file__))
         return os.path.join(project_root, self.ml_model.model_path)
 
 # Global configuration instance

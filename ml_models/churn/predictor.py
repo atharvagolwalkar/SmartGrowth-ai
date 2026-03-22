@@ -42,18 +42,10 @@ class ChurnPredictor:
     
     def _get_default_db_path(self) -> str:
         """Get default database path, resolving relative to project root"""
-        # Find project root by looking for key files
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        
-        # Walk up directories to find project root (containing setup_database.py)
-        search_dir = current_dir
-        for _ in range(5):  # Search up to 5 levels up
-            if os.path.exists(os.path.join(search_dir, 'setup_database.py')):
-                return os.path.join(search_dir, 'smartgrowth.db')
-            search_dir = os.path.dirname(search_dir)
-        
-        # Fallback to current working directory
-        return os.path.join(os.getcwd(), 'smartgrowth.db')
+        project_root = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        )
+        return os.path.join(project_root, 'smartgrowth.db')
     
     def _get_default_model_path(self) -> str:
         """Get default model path"""

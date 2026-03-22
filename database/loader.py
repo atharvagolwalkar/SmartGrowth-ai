@@ -6,9 +6,10 @@ It's imported by setup_database.py - don't run this directly.
 """
 
 import pandas as pd
-from sqlalchemy import create_engine, text
+from sqlalchemy import inspect, text
 import os
 import logging
+from ml_models.forecasting import generate_synthetic_daily_demand
 
 logger = logging.getLogger(__name__)
 
@@ -70,9 +71,17 @@ def load_customer_data(engine):
         logger.info(f"  - Duplicate customer_ids: {df_customers['customer_id'].duplicated().sum()}")
         logger.info(f"  - Churn rate: {df_customers['churn_status'].mean():.2%}")
         
-        # Push to database
+        # Preserve the schema created from schema.sql instead of replacing it.
         logger.info("Loading data into database...")
-        df_customers.to_sql('dim_customers', engine, if_exists='replace', index=False)
+        inspector = inspect(engine)
+        table_exists = inspector.has_table('dim_customers')
+
+        if table_exists:
+            with engine.begin() as conn:
+                conn.execute(text("DELETE FROM dim_customers"))
+            df_customers.to_sql('dim_customers', engine, if_exists='append', index=False)
+        else:
+            df_customers.to_sql('dim_customers', engine, if_exists='fail', index=False)
         
         # Verify the load using text() wrapper
         with engine.connect() as conn:
@@ -89,4 +98,43 @@ def load_customer_data(engine):
         
     except Exception as e:
         logger.error(f"❌ Error loading customer data: {e}")
+        return False, 0
+
+
+def load_daily_demand_data(engine, csv_output_path: str = "data/daily_demand.csv"):
+    """Generate and load synthetic daily demand data for forecasting."""
+    try:
+        logger.info("Generating synthetic daily demand dataset...")
+        demand_df = generate_synthetic_daily_demand()
+
+        output_dir = os.path.dirname(csv_output_path)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+        demand_df.to_csv(csv_output_path, index=False)
+
+        logger.info(f"Synthetic demand data generated with {len(demand_df)} rows")
+        logger.info("Loading synthetic demand data into database...")
+
+        inspector = inspect(engine)
+        table_exists = inspector.has_table("fact_daily_demand")
+
+        if table_exists:
+            with engine.begin() as conn:
+                conn.execute(text("DELETE FROM fact_daily_demand"))
+            demand_df.to_sql("fact_daily_demand", engine, if_exists="append", index=False)
+        else:
+            demand_df.to_sql("fact_daily_demand", engine, if_exists="fail", index=False)
+
+        with engine.connect() as conn:
+            loaded_count = conn.execute(text("SELECT COUNT(*) FROM fact_daily_demand")).scalar_one()
+            date_range = conn.execute(
+                text("SELECT MIN(demand_date), MAX(demand_date) FROM fact_daily_demand")
+            ).fetchone()
+
+        logger.info(f"Successfully loaded {loaded_count} daily demand records into database")
+        logger.info(f"Demand date range: {date_range[0]} to {date_range[1]}")
+
+        return True, int(loaded_count)
+    except Exception as e:
+        logger.error(f"Error loading daily demand data: {e}")
         return False, 0
