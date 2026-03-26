@@ -1,0 +1,13 @@
+{
+  "results": {
+    "Prophet": {
+      "MAE": 34.839,
+      "RMSE": 49.259,
+      "MAPE": 6.602,
+      "fit_time_s": 0.4
+    }
+  },
+  "best_model": "Prophet",
+  "holdout_days": 30,
+  "train_size": 370
+}

@@ -1,152 +1,169 @@
-"""Synthetic demand data generation for the forecasting module."""
+"""
+Synthetic demand data generator for SmartGrowth AI forecasting module.
+Generates realistic daily demand with trend, seasonality, promotions,
+holidays, marketing spend, and noise — ready for ARIMA / Prophet / N-BEATS.
+"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Optional
-
 import numpy as np
 import pandas as pd
+from dataclasses import dataclass, field
+from typing import Optional
 
 
 @dataclass
-class DailyDemandGeneratorConfig:
-    """Controls the synthetic time-series demand shape."""
-
+class ForecastingConfig:
+    """Central config for data generation and model training."""
     start_date: str = "2022-01-01"
-    end_date: str = "2024-12-31"
-    base_orders: int = 240
-    weekly_amplitude: float = 45.0
-    yearly_amplitude: float = 30.0
-    trend_per_day: float = 0.08
-    marketing_spend_base: float = 1800.0
-    marketing_spend_noise: float = 220.0
-    avg_order_value_base: float = 82.0
-    random_seed: int = 42
+    periods: int = 730          # 2 years of daily data
+    base_demand: float = 500.0
+    trend_per_day: float = 0.12
+    noise_std: float = 30.0
+    seed: int = 42
+
+    # Seasonality amplitudes
+    weekly_amplitude: float = 60.0
+    yearly_amplitude: float = 120.0
+
+    # Promotion / holiday params
+    promo_lift_pct: float = 0.25
+    holiday_lift_pct: float = 0.40
+
+    # Model output paths (relative to repo root)
+    model_dir: str = "ml_models/forecasting/artifacts"
+
+    # Forecast horizon (days)
+    forecast_horizon: int = 30
 
 
-def _holiday_calendar(year: int) -> set[pd.Timestamp]:
-    """Return a compact set of high-impact retail dates."""
-    return {
-        pd.Timestamp(year=year, month=1, day=1),
-        pd.Timestamp(year=year, month=2, day=14),
-        pd.Timestamp(year=year, month=8, day=15),
-        pd.Timestamp(year=year, month=10, day=24),
-        pd.Timestamp(year=year, month=11, day=1),
-        pd.Timestamp(year=year, month=11, day=27),
-        pd.Timestamp(year=year, month=12, day=25),
-        pd.Timestamp(year=year, month=12, day=31),
-    }
+# Indian / global holidays that affect e-commerce demand
+_HOLIDAYS = {
+    "New Year":      ("01-01",),
+    "Valentine's":   ("02-14",),
+    "Holi":          ("03-25",),   # approximate fixed date for synthetic data
+    "Independence":  ("08-15",),
+    "Dussehra":      ("10-12",),
+    "Diwali":        ("11-12",),   # approximate
+    "Christmas":     ("12-25",),
+    "New Year Eve":  ("12-31",),
+}
+
+# Month-day strings that get a promotional lift
+_PROMO_DAYS = {
+    "Big Sale Jan":  ("01-26",),   # Republic Day sale
+    "Summer Sale":   ("05-15",),
+    "Independence Sale": ("08-15",),
+    "Festive Sale":  ("10-02",),
+    "Black Friday":  ("11-29",),
+    "Cyber Monday":  ("12-02",),
+}
 
 
-def generate_synthetic_daily_demand(
-    config: Optional[DailyDemandGeneratorConfig] = None,
-) -> pd.DataFrame:
-    """Generate a realistic daily demand dataset with business drivers."""
+def _is_holiday(date: pd.Timestamp) -> bool:
+    md = date.strftime("%m-%d")
+    return any(md in days for days in _HOLIDAYS.values())
 
-    config = config or DailyDemandGeneratorConfig()
-    rng = np.random.default_rng(config.random_seed)
-    dates = pd.date_range(config.start_date, config.end_date, freq="D")
-    df = pd.DataFrame({"demand_date": dates})
 
-    day_index = np.arange(len(df))
-    day_of_week = df["demand_date"].dt.dayofweek
-    month = df["demand_date"].dt.month
-    week_of_year = df["demand_date"].dt.isocalendar().week.astype(int)
-    is_weekend = day_of_week >= 5
+def _is_promo(date: pd.Timestamp) -> bool:
+    md = date.strftime("%m-%d")
+    return any(md in days for days in _PROMO_DAYS.values())
 
-    holiday_dates = {
-        holiday
-        for year in df["demand_date"].dt.year.unique()
-        for holiday in _holiday_calendar(int(year))
-    }
-    is_holiday = df["demand_date"].isin(holiday_dates)
 
-    promo_cycle = (day_index % 28) < 5
-    q4_boost = month.isin([10, 11, 12]) & ((day_index % 21) < 6)
-    is_promotion = promo_cycle | q4_boost
+def generate_daily_demand(config: Optional[ForecastingConfig] = None) -> pd.DataFrame:
+    """
+    Generate a realistic synthetic daily demand DataFrame.
 
-    marketing_spend = (
-        config.marketing_spend_base
-        + np.where(is_promotion, 950.0, 0.0)
-        + np.where(is_holiday, 450.0, 0.0)
-        + rng.normal(0, config.marketing_spend_noise, len(df))
-    ).clip(min=400.0)
+    Returns columns:
+        ds          - date (datetime64)
+        y           - demand units (float)
+        day_of_week - 0=Mon … 6=Sun
+        month       - 1-12
+        is_weekend  - bool
+        is_holiday  - bool
+        is_promo    - bool
+        marketing_spend - float (correlated with demand)
+        discount_pct    - float 0-0.4
+        avg_order_value - float
+        revenue         - float (y * avg_order_value * (1 - discount_pct))
+    """
+    if config is None:
+        config = ForecastingConfig()
 
-    discount_pct = (
-        np.where(is_promotion, rng.uniform(0.08, 0.22, len(df)), rng.uniform(0.0, 0.05, len(df)))
-        + np.where(is_holiday, 0.03, 0.0)
-    ).clip(0, 0.30)
+    rng = np.random.default_rng(config.seed)
+    dates = pd.date_range(start=config.start_date, periods=config.periods, freq="D")
+    t = np.arange(config.periods)
 
-    avg_order_value = (
-        config.avg_order_value_base
-        + month.map({
-            1: -4.0,
-            2: -3.0,
-            3: -1.5,
-            4: 0.0,
-            5: 1.5,
-            6: 2.5,
-            7: 2.0,
-            8: 2.5,
-            9: 4.0,
-            10: 6.0,
-            11: 8.5,
-            12: 10.0,
-        }).astype(float)
-        + np.where(is_promotion, -6.0, 0.0)
-        + rng.normal(0, 2.5, len(df))
-    ).clip(lower=45.0)
+    # ── Base components ──────────────────────────────────────────────────────
+    trend = config.base_demand + config.trend_per_day * t
 
-    weekly_pattern = config.weekly_amplitude * np.sin(2 * np.pi * day_of_week / 7)
-    yearly_pattern = config.yearly_amplitude * np.cos(2 * np.pi * df["demand_date"].dt.dayofyear / 365.25)
-    holiday_lift = np.where(is_holiday, 110.0, 0.0)
-    promotion_lift = np.where(is_promotion, 75.0, 0.0)
-    weekend_lift = np.where(is_weekend, 28.0, 0.0)
-    marketing_lift = (marketing_spend - config.marketing_spend_base) / 42.0
-    discount_lift = discount_pct * 260.0
-    noise = rng.normal(0, 18.0, len(df))
+    # Weekly seasonality: higher on Fri/Sat/Sun
+    day_of_week = dates.dayofweek.values   # 0=Mon
+    weekly = config.weekly_amplitude * np.sin(2 * np.pi * day_of_week / 7 - np.pi / 2)
 
-    orders = (
-        config.base_orders
-        + (config.trend_per_day * day_index)
-        + weekly_pattern
-        + yearly_pattern
-        + holiday_lift
-        + promotion_lift
-        + weekend_lift
-        + marketing_lift
-        + discount_lift
-        + noise
+    # Yearly seasonality: Q4 peak (Oct-Dec)
+    yearly = config.yearly_amplitude * np.sin(2 * np.pi * t / 365 - np.pi)
+
+    noise = rng.normal(0, config.noise_std, config.periods)
+
+    demand = trend + weekly + yearly + noise
+
+    # ── Event lifts ──────────────────────────────────────────────────────────
+    is_holiday = np.array([_is_holiday(d) for d in dates])
+    is_promo = np.array([_is_promo(d) for d in dates])
+
+    demand = np.where(is_holiday, demand * (1 + config.holiday_lift_pct), demand)
+    demand = np.where(is_promo,   demand * (1 + config.promo_lift_pct),   demand)
+
+    # Carry-over effect: 50% lift on day after a promo/holiday
+    carry = np.roll(is_holiday | is_promo, 1).astype(float) * 0.5
+    carry[0] = 0
+    demand = demand * (1 + carry * 0.15)
+
+    demand = np.clip(demand, 50, None)  # floor at 50 units
+
+    # ── Derived columns ──────────────────────────────────────────────────────
+    is_weekend = (day_of_week >= 5).astype(bool)
+    month = dates.month.values
+
+    # Marketing spend: baseline + random bursts
+    marketing_spend = 2000 + rng.normal(0, 300, config.periods)
+    marketing_spend += is_promo * 5000
+    marketing_spend += is_holiday * 3000
+    marketing_spend = np.clip(marketing_spend, 500, None)
+
+    # Discount: higher on promo days
+    discount_pct = np.clip(
+        rng.uniform(0.02, 0.15, config.periods)
+        + is_promo * 0.20
+        + is_holiday * 0.10,
+        0, 0.40
     )
-    orders = np.round(np.clip(orders, a_min=35, a_max=None)).astype(int)
-    revenue = np.round(orders * avg_order_value, 2)
 
-    df["orders"] = orders
-    df["revenue"] = revenue
-    df["avg_order_value"] = np.round(avg_order_value, 2)
-    df["marketing_spend"] = np.round(marketing_spend, 2)
-    df["discount_pct"] = np.round(discount_pct, 4)
-    df["is_promotion"] = is_promotion.astype(bool)
-    df["is_holiday"] = is_holiday.astype(bool)
-    df["day_of_week"] = day_of_week.astype(int)
-    df["week_of_year"] = week_of_year.astype(int)
-    df["month"] = month.astype(int)
-    df["is_weekend"] = is_weekend.astype(bool)
+    avg_order_value = 850 + rng.normal(0, 80, config.periods) + is_weekend * 50
 
-    return df[
-        [
-            "demand_date",
-            "orders",
-            "revenue",
-            "avg_order_value",
-            "marketing_spend",
-            "discount_pct",
-            "is_promotion",
-            "is_holiday",
-            "day_of_week",
-            "week_of_year",
-            "month",
-            "is_weekend",
-        ]
-    ]
+    revenue = demand * avg_order_value * (1 - discount_pct)
+
+    df = pd.DataFrame({
+        "ds":               dates,
+        "y":                demand.round(2),
+        "day_of_week":      day_of_week,
+        "month":            month,
+        "is_weekend":       is_weekend,
+        "is_holiday":       is_holiday,
+        "is_promo":         is_promo,
+        "marketing_spend":  marketing_spend.round(2),
+        "discount_pct":     discount_pct.round(4),
+        "avg_order_value":  avg_order_value.round(2),
+        "revenue":          revenue.round(2),
+    })
+
+    return df
+
+
+if __name__ == "__main__":
+    df = generate_daily_demand()
+    print(df.head(10).to_string())
+    print(f"\nShape: {df.shape}")
+    print(f"Date range: {df['ds'].min().date()} → {df['ds'].max().date()}")
+    print(f"Demand stats:\n{df['y'].describe().round(1)}")

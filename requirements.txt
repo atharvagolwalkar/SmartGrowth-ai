@@ -35,3 +35,61 @@ httpx==0.25.2
 # jupyter==1.0.0  # For notebook development
 # seaborn==0.13.0  # Additional plotting
 # matplotlib==3.8.2  # Base plotting
+
+# ============================================================
+# SmartGrowth AI — Forecasting Module Dependencies
+# Add these to your root requirements.txt
+# ============================================================
+
+# ── Core forecasting ────────────────────────────────────────
+
+# Prophet (Meta) — business-friendly forecasting
+# Note: on some systems you need pystan first:
+#   pip install pystan==2.19.1.1  (for prophet <1.1)
+#   OR just: pip install prophet  (modern versions auto-resolve)
+prophet>=1.1.4
+
+# pmdarima — auto ARIMA order selection (optional but recommended)
+# Falls back to statsmodels ARIMA(1,1,1) if not installed
+pmdarima>=2.0.3
+
+# statsmodels — used by ARIMA fallback and seasonal decompose
+statsmodels>=0.14.0
+
+# N-BEATS via neuralforecast (Nixtla) — requires PyTorch
+# CPU install:
+#   pip install neuralforecast
+# GPU install:
+#   pip install neuralforecast torch torchvision torchaudio
+neuralforecast>=1.7.0
+
+# PyTorch (neuralforecast dependency)
+# CPU-only (smaller download, fine for dev):
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+# or just:
+torch>=2.0.0
+
+# ── Already in requirements.txt (just confirming versions) ──
+# numpy>=1.24.0
+# pandas>=2.0.0
+# scikit-learn>=1.3.0
+
+# ── Optional: faster Prophet install via conda ───────────────
+# conda install -c conda-forge prophet
+
+
+# ============================================================
+# QUICK INSTALL (copy-paste):
+# ============================================================
+#
+# Minimal (Prophet + ARIMA only, no DL):
+#   pip install prophet pmdarima statsmodels
+#
+# Full (includes N-BEATS DL model):
+#   pip install prophet pmdarima statsmodels neuralforecast torch
+#
+# If prophet install fails on Windows:
+#   conda install -c conda-forge prophet
+#   pip install pmdarima neuralforecast torch
+#
+# ============================================================

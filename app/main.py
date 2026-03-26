@@ -16,6 +16,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import get_config
 from ml_models.churn.predictor import get_predictor
 
+from app.forecast_routes import router as forecast_router
 
 settings = get_config()
 
@@ -28,6 +29,8 @@ app = FastAPI(
     description="Production ML Platform for Customer Intelligence & Growth Analytics",
     version=settings.version,
 )
+
+app.include_router(forecast_router, prefix="/forecast", tags=["Forecasting"])
 
 app.add_middleware(
     CORSMiddleware,
@@ -93,6 +96,18 @@ def home():
             "/health",
         ],
     }
+
+@app.on_event("startup")
+async def startup_event():
+    # ... your existing startup code ...
+
+    # Pre-load forecast pipeline
+    try:
+        from ml_models.forecasting import get_forecast_pipeline
+        get_forecast_pipeline()
+        logger.info("Forecast pipeline loaded.")
+    except Exception as e:
+        logger.warning(f"Forecast pipeline not ready: {e}")
 
 
 @app.get("/health")
