@@ -137,7 +137,7 @@ def generate_feedback(
 
     # Category weights — slightly skewed negative (realistic)
     categories = list(_CATEGORIES.keys())
-    weights = [0.20, 0.18, 0.20, 0.15, 0.15, 0.12]
+    weights = [0.15, 0.14, 0.14, 0.22, 0.22, 0.13]
 
     channels = ["email", "chat", "phone", "app_review", "social"]
     channel_weights = [0.25, 0.30, 0.20, 0.15, 0.10]

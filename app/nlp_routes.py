@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 from typing import Optional
-
+import pandas as pd
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel
 
@@ -224,9 +224,3 @@ def rebuild_nlp(background_tasks: BackgroundTasks):
     return {"status": "rebuild_started",
             "message": "Check /nlp/stats in ~1 minute for results."}
 
-
-# Needed for the sentinel check in get_sentiment_summary
-try:
-    import pandas as pd
-except ImportError:
-    pass

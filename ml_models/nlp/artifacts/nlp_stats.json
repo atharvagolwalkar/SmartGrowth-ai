@@ -1,0 +1,36 @@
+{
+  "total_feedback": 500,
+  "sentiment_distribution": {
+    "negative": 54.2,
+    "positive": 45.8
+  },
+  "category_distribution": {
+    "support_positive": 120,
+    "product_positive": 109,
+    "support_negative": 74,
+    "billing": 72,
+    "cancellation_intent": 69,
+    "network": 56
+  },
+  "channel_distribution": {
+    "chat": 153,
+    "email": 123,
+    "phone": 102,
+    "app_review": 70,
+    "social": 52
+  },
+  "avg_sentiment_score": -0.0084,
+  "index_stats": {
+    "backend": "chromadb",
+    "document_count": 500,
+    "model": "all-MiniLM-L6-v2",
+    "db_path": "C:\\Users\\athar\\smartgrowth-ai\\ml_models\\nlp\\artifacts\\chroma_db"
+  },
+  "trend": {
+    "direction": "worsening",
+    "magnitude": 30.3,
+    "recent_avg": -37.7,
+    "older_avg": -7.4,
+    "summary": "\u2193 Sentiment worsening (-30.3pp vs prior period)"
+  }
+}

@@ -17,6 +17,7 @@ from config import get_config
 from ml_models.churn.predictor import get_predictor
 
 from app.forecast_routes import router as forecast_router
+from app.nlp_routes import router as nlp_router
 
 settings = get_config()
 
@@ -45,6 +46,10 @@ app = FastAPI(
 )
 
 app.include_router(forecast_router, prefix="/forecast", tags=["Forecasting"])
+
+
+app.include_router(nlp_router, prefix="/nlp", tags=["NLP"])
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -122,6 +127,13 @@ async def startup_event():
         logger.info("Forecast pipeline loaded.")
     except Exception as e:
         logger.warning(f"Forecast pipeline not ready: {e}")
+    
+    try:
+        from ml_models.nlp import get_nlp_pipeline
+        get_nlp_pipeline()
+        logger.info("NLP pipeline loaded.")
+    except Exception as e:
+        logger.warning(f"NLP pipeline not ready: {e}")     
 
 
 @app.get("/health")
