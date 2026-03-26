@@ -139,7 +139,7 @@ def get_all_forecasts(
     for model_name, df in all_forecasts.items():
         response[model_name] = [
             {
-                "date":        str(row["ds"].date()),
+                "date":        str(row["ds"].date()) if hasattr(row["ds"], 'date') else str(row["ds"]),
                 "forecast":    round(float(row["yhat"]), 2),
                 "lower_bound": round(float(row["yhat_lower"]), 2),
                 "upper_bound": round(float(row["yhat_upper"]), 2),

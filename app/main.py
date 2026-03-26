@@ -24,6 +24,20 @@ settings = get_config()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+def serialize_row(row: dict) -> dict:
+    """Convert numpy types to native Python types for JSON serialization."""
+    clean = {}
+    for k, v in row.items():
+        if hasattr(v, 'item'):          # catches numpy.bool_, numpy.int64, numpy.float64 etc
+            clean[k] = v.item()
+        elif v != v:                    # NaN check
+            clean[k] = None
+        else:
+            clean[k] = v
+    return clean
+
+
 app = FastAPI(
     title=settings.project_name,
     description="Production ML Platform for Customer Intelligence & Growth Analytics",
@@ -150,12 +164,16 @@ def get_all_customers(limit: int = 100, offset: int = 0):
         total_count_query = text("SELECT COUNT(*) as count FROM dim_customers")
         total_count = pd.read_sql(total_count_query, engine).iloc[0]["count"]
 
+        # Fix: replace NaN with None, strip all numpy types to native Python
+        df = df.where(pd.notnull(df), None)
+        customers = df.astype(object).to_dict(orient="records")
+
         return {
-            "customers": df.to_dict(orient="records"),
+            "customers": customers,
             "total_count": int(total_count),
             "limit": limit,
             "offset": offset,
-            "has_more": (offset + limit) < total_count,
+            "has_more": (offset + limit) < int(total_count),
         }
     except Exception as exc:
         logger.error("Error retrieving customers: %s", exc)
