@@ -93,3 +93,110 @@ torch>=2.0.0
 #   pip install pmdarima neuralforecast torch
 #
 # ============================================================
+
+# ============================================================
+# SmartGrowth AI — NLP Module Dependencies
+# Add these to your root requirements.txt
+# ============================================================
+
+# ── Semantic search (primary backend) ───────────────────────
+# Embeds text into 384-dim vectors, ~22MB model download
+sentence-transformers>=2.7.0
+
+# Vector database — embedded, no server, persists to disk
+chromadb>=0.5.0
+
+# ── Sentiment analysis ───────────────────────────────────────
+# Full transformer (RoBERTa) — best accuracy, needs torch
+transformers>=4.40.0
+torch>=2.0.0           # CPU version is fine
+
+# VADER fallback — fast rule-based, no GPU needed
+nltk>=3.8.1
+
+# ── Already in requirements.txt ─────────────────────────────
+# numpy>=1.24.0
+# pandas>=2.0.0
+# scikit-learn>=1.3.0    # used for TF-IDF fallback
+
+
+# ============================================================
+# QUICK INSTALL:
+# ============================================================
+#
+# Minimal (TF-IDF search + VADER sentiment, no GPU):
+#   pip install nltk scikit-learn
+#   python -c "import nltk; nltk.download('vader_lexicon')"
+#
+# Standard (sentence-transformers + chromadb + VADER):
+#   pip install sentence-transformers chromadb nltk
+#
+# Full (adds RoBERTa transformer sentiment):
+#   pip install sentence-transformers chromadb transformers torch nltk
+#
+# ============================================================
+
+
+# ============================================================
+# INTEGRATION GUIDE — add to app/main.py
+# ============================================================
+#
+# 1. Import the router (near top of main.py):
+#
+#    from app.nlp_routes import router as nlp_router
+#
+# 2. Register it (after app = FastAPI(...)):
+#
+#    app.include_router(nlp_router, prefix="/nlp", tags=["NLP"])
+#
+# 3. Add to startup event:
+#
+#    @app.on_event("startup")
+#    async def startup_event():
+#        # ... existing startup code ...
+#        try:
+#            from ml_models.nlp.pipeline import get_nlp_pipeline
+#            get_nlp_pipeline()
+#            logger.info("NLP pipeline loaded.")
+#        except Exception as e:
+#            logger.warning(f"NLP pipeline not ready: {e}")
+#
+# 4. Copy nlp_routes.py to app/ folder:
+#    cp ml_models/nlp/nlp_routes.py app/nlp_routes.py
+#
+# ============================================================
+
+
+# ============================================================
+# DASHBOARD INTEGRATION — add NLP page to dashboard_v2.py
+# ============================================================
+#
+# 1. Copy contents of dashboard_nlp_page.py into dashboard_v2.py
+#    (paste the page_nlp() function before the main() function)
+#
+# 2. In render_sidebar(), add "NLP Insights" to options:
+#    options=["Overview", "Customer Analysis", "Demand Forecast",
+#             "NLP Insights", "High Risk", "Batch"],
+#
+# 3. In main(), add the elif branch:
+#    elif page == "NLP Insights":
+#        page_nlp()
+#
+# ============================================================
+
+
+# ============================================================
+# RUN PIPELINE (one-time setup):
+# ============================================================
+#
+# Synthetic data (no DB needed):
+#   python -m ml_models.nlp.pipeline
+#
+# Real DB data:
+#   python -m ml_models.nlp.pipeline --use-db
+#
+# More synthetic records:
+#   python -m ml_models.nlp.pipeline --n-synthetic 1000
+#
+# Then restart the API — models load automatically on startup.
+# ============================================================
