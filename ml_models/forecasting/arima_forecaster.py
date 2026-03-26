@@ -44,7 +44,7 @@ class ARIMAForecaster:
         """
         Fit SARIMA on the 'y' column of df (must also have 'ds' column).
         """
-        series = df.set_index("ds")["y"].asfreq("D").fillna(method="ffill")
+        series = df.set_index("ds")["y"].asfreq("D").ffill()
         self.train_end_date = series.index[-1]
 
         try:
@@ -53,7 +53,7 @@ class ARIMAForecaster:
             self.model = pm.auto_arima(
                 series,
                 seasonal=self.seasonal,
-                m=self.m,
+                m=self.m if self.seasonal else 1,
                 stepwise=True,
                 suppress_warnings=True,
                 error_action="ignore",

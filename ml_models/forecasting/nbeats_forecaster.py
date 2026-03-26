@@ -300,7 +300,7 @@ class _NBeatsNumpy:
         n_blocks: int = 3,
         n_units: int = 128,
         n_epochs: int = 200,
-        learning_rate: float = 1e-3,
+        learning_rate: float = 1e-4,
     ):
         self.horizon = horizon
         self.lookback = lookback
