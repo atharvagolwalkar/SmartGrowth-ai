@@ -1,25 +1,25 @@
 {
   "total_feedback": 500,
   "sentiment_distribution": {
-    "negative": 54.2,
-    "positive": 45.8
+    "negative": 63.6,
+    "positive": 36.4
   },
   "category_distribution": {
-    "support_positive": 120,
-    "product_positive": 109,
-    "support_negative": 74,
-    "billing": 72,
-    "cancellation_intent": 69,
-    "network": 56
+    "product_positive": 104,
+    "billing": 87,
+    "network": 86,
+    "support_positive": 78,
+    "cancellation_intent": 76,
+    "support_negative": 69
   },
   "channel_distribution": {
-    "chat": 153,
-    "email": 123,
-    "phone": 102,
-    "app_review": 70,
-    "social": 52
+    "chat": 155,
+    "email": 146,
+    "phone": 91,
+    "app_review": 67,
+    "social": 41
   },
-  "avg_sentiment_score": -0.0084,
+  "avg_sentiment_score": -0.146,
   "index_stats": {
     "backend": "chromadb",
     "document_count": 500,
@@ -28,9 +28,9 @@
   },
   "trend": {
     "direction": "worsening",
-    "magnitude": 30.3,
-    "recent_avg": -37.7,
-    "older_avg": -7.4,
-    "summary": "\u2193 Sentiment worsening (-30.3pp vs prior period)"
+    "magnitude": 15.7,
+    "recent_avg": -40.1,
+    "older_avg": -24.4,
+    "summary": "\u2193 Sentiment worsening (-15.7pp vs prior period)"
   }
 }

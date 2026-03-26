@@ -462,7 +462,7 @@ def render_sidebar() -> str:
         st.markdown('<div class="sg-section-header">Navigation</div>', unsafe_allow_html=True)
         page = st.radio(
             label="nav",
-            options=["Overview", "Customer Analysis", "Demand Forecast", "High Risk", "Batch"],
+            options=["Overview", "Customer Analysis", "Demand Forecast", "High Risk", "Batch", "NLP Insights"],
             label_visibility="collapsed",
         )
 
@@ -1005,6 +1005,362 @@ def _render_batch_results(result: dict | list):
     )
 
 
+
+# ── Paste everything below this line into dashboard_v2.py ────────────────────
+
+
+def page_nlp():
+    st.markdown("## NLP Insights")
+
+    # ── Check pipeline status ──────────────────────────────────────────────
+    stats_data, stats_err = api_get("/nlp/stats")
+    if stats_err or not stats_data:
+        st.error("NLP pipeline not ready.")
+        st.code("python -m ml_models.nlp.pipeline", language="bash")
+        st.info("Run the command above to build the search index and sentiment scores, then restart the API.")
+        return
+
+    # ── Top KPI strip ──────────────────────────────────────────────────────
+    total_fb   = stats_data.get("total_feedback", 0)
+    sent_dist  = stats_data.get("sentiment_distribution", {})
+    trend_info = stats_data.get("trend", {})
+    backend    = stats_data.get("index_stats", {}).get("backend", "unknown")
+
+    pos_pct = sent_dist.get("positive", 0)
+    neg_pct = sent_dist.get("negative", 0)
+    neu_pct = sent_dist.get("neutral",  0)
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Total Feedback",    f"{total_fb:,}")
+    c2.metric("Positive",          f"{pos_pct:.1f}%",   delta_color="normal")
+    c3.metric("Negative",          f"{neg_pct:.1f}%",   delta_color="inverse")
+    c4.metric("Neutral",           f"{neu_pct:.1f}%",   delta_color="off")
+    c5.metric("Search Backend",    backend.upper())
+
+    if trend_info:
+        direction = trend_info.get("direction", "stable")
+        color_map = {"improving": COLORS["accent2"], "worsening": COLORS["danger"],
+                     "stable": COLORS["muted"]}
+        st.markdown(
+            f'<div style="margin:0.5rem 0 1.5rem;padding:10px 16px;'
+            f'background:{COLORS["surface"]};border-radius:8px;'
+            f'border-left:3px solid {color_map.get(direction, COLORS["muted"])};">'
+            f'<span style="color:{COLORS["muted"]};font-size:0.78rem;">SENTIMENT TREND &nbsp;</span>'
+            f'<span style="font-size:0.88rem;">{trend_info.get("summary","")}</span></div>',
+            unsafe_allow_html=True,
+        )
+
+    # ── Tabs ───────────────────────────────────────────────────────────────
+    tab_search, tab_timeline, tab_breakdown = st.tabs(
+        ["Semantic Search", "Sentiment Timeline", "Breakdown by Category"]
+    )
+
+    # ════════════════════════════════════════════════════════
+    # TAB 1 — Semantic Search
+    # ════════════════════════════════════════════════════════
+    with tab_search:
+        st.markdown(f"""
+        <div class="sg-card" style="margin-bottom:1rem;">
+            <div style="font-size:0.85rem;color:{COLORS['muted']};line-height:1.7;">
+                Search customer feedback by <b>meaning</b>, not keywords.
+                Try <em>"billing problem"</em> — it will find <em>"charged twice"</em>,
+                <em>"wrong invoice"</em>, and <em>"unexpected fee"</em> even with zero
+                word overlap.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        col_q, col_k, col_s, col_btn = st.columns([4, 1, 2, 1])
+        with col_q:
+            query = st.text_input("Search query", placeholder="e.g. billing problem, slow internet, great support",
+                                   label_visibility="collapsed")
+        with col_k:
+            top_k = st.number_input("Results", min_value=3, max_value=30, value=8,
+                                     label_visibility="visible")
+        with col_s:
+            sentiment_filter = st.selectbox("Sentiment filter",
+                                             ["All", "positive", "negative", "neutral"],
+                                             label_visibility="visible")
+        with col_btn:
+            st.markdown("<br>", unsafe_allow_html=True)
+            do_search = st.button("Search →", use_container_width=True)
+
+        # Suggested queries
+        st.markdown(f'<div style="font-size:0.75rem;color:{COLORS["muted"]};margin-bottom:0.75rem;">'
+                    f'Suggestions: &nbsp;', unsafe_allow_html=True)
+        sugg_cols = st.columns(6)
+        suggestions = ["billing problem", "slow internet", "great support",
+                        "cancel service", "technical issue", "refund request"]
+        for i, sugg in enumerate(suggestions):
+            with sugg_cols[i]:
+                if st.button(sugg, key=f"sugg_{i}", use_container_width=True):
+                    query = sugg
+                    do_search = True
+
+        if do_search and query:
+            params = {"q": query, "top_k": top_k}
+            if sentiment_filter != "All":
+                params["filter_sentiment"] = sentiment_filter
+
+            with st.spinner(f'Searching for "{query}"...'):
+                data, err = api_get("/nlp/search", params)
+
+            if err:
+                st.error(f"Search error: {err}")
+            elif data and data.get("results"):
+                results = data["results"]
+                backend_used = data.get("backend", "unknown")
+
+                st.markdown(
+                    f'<div style="font-size:0.8rem;color:{COLORS["muted"]};margin-bottom:0.75rem;">'
+                    f'Found <b style="color:{COLORS["text"]}">{len(results)}</b> results · '
+                    f'Backend: <code style="color:{COLORS["accent"]}">{backend_used}</code></div>',
+                    unsafe_allow_html=True,
+                )
+
+                for r in results:
+                    score      = r.get("similarity_score", 0)
+                    sentiment  = r.get("sentiment_label", "neutral")
+                    sent_color = {"positive": COLORS["accent2"],
+                                  "negative": COLORS["danger"],
+                                  "neutral":  COLORS["muted"]}.get(sentiment, COLORS["muted"])
+                    bar_width  = int(score * 100)
+
+                    st.markdown(f"""
+                    <div class="sg-card" style="padding:0.9rem 1.1rem;">
+                        <div style="display:flex;justify-content:space-between;
+                                    align-items:flex-start;gap:1rem;">
+                            <div style="flex:1;font-size:0.88rem;line-height:1.55;">
+                                {r.get("feedback_text","")}
+                            </div>
+                            <div style="text-align:right;min-width:90px;">
+                                <div style="font-size:1.1rem;font-weight:600;
+                                            color:{COLORS['accent']};">{score*100:.0f}%</div>
+                                <div style="font-size:0.7rem;color:{COLORS['muted']};">match</div>
+                            </div>
+                        </div>
+                        <div style="margin-top:8px;display:flex;gap:1rem;
+                                    align-items:center;flex-wrap:wrap;">
+                            <span style="font-size:0.75rem;color:{sent_color};">
+                                ● {sentiment}
+                            </span>
+                            {'<span style="font-size:0.75rem;color:' + COLORS["muted"] + ';">' +
+                              str(r.get("category","")).replace("_"," ") + '</span>'
+                              if r.get("category") else ""}
+                            {'<span style="font-size:0.75rem;color:' + COLORS["muted"] + ';">' +
+                              str(r.get("channel","")) + '</span>'
+                              if r.get("channel") else ""}
+                            <span style="font-size:0.75rem;color:{COLORS['muted']};">
+                                {str(r.get("customer_id",""))}
+                            </span>
+                        </div>
+                        <div class="risk-bar-container" style="margin-top:8px;">
+                            <div class="risk-bar-fill"
+                                 style="width:{bar_width}%;background:{COLORS['accent']};
+                                        opacity:0.5;"></div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.info("No results found. Try a different query.")
+
+    # ════════════════════════════════════════════════════════
+    # TAB 2 — Sentiment Timeline
+    # ════════════════════════════════════════════════════════
+    with tab_timeline:
+        col_freq, _ = st.columns([2, 5])
+        with col_freq:
+            freq = st.selectbox("Aggregation", ["W — Weekly", "ME — Monthly", "D — Daily"],
+                                 label_visibility="visible")
+        freq_code = freq.split(" ")[0]
+
+        with st.spinner("Loading sentiment timeline..."):
+            tl_data, tl_err = api_get("/nlp/sentiment/timeline", {"freq": freq_code})
+
+        if tl_err or not tl_data:
+            st.error(f"Timeline error: {tl_err}")
+        else:
+            timeline = tl_data.get("timeline", [])
+            trend    = tl_data.get("trend", {})
+
+            if trend:
+                direction = trend.get("direction", "stable")
+                col_map   = {"improving": COLORS["accent2"], "worsening": COLORS["danger"],
+                             "stable": COLORS["muted"]}
+                st.markdown(
+                    f'<div class="sg-card" style="border-left:3px solid '
+                    f'{col_map.get(direction, COLORS["muted"])};padding:0.75rem 1rem;'
+                    f'margin-bottom:1rem;">'
+                    f'<span style="font-size:0.88rem;">{trend.get("summary","")}</span>'
+                    f'<span style="font-size:0.78rem;color:{COLORS["muted"]};margin-left:1rem;">'
+                    f'Recent avg: {trend.get("recent_avg",""):.1f}pp &nbsp; vs &nbsp; '
+                    f'Prior avg: {trend.get("older_avg",""):.1f}pp</span></div>',
+                    unsafe_allow_html=True,
+                )
+
+            if timeline:
+                df_tl = pd.DataFrame(timeline)
+
+                # ── Stacked area chart ──
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(
+                    x=df_tl["period"], y=df_tl["positive_pct"],
+                    name="Positive", mode="lines",
+                    line=dict(color=COLORS["accent2"], width=2),
+                    fill="tozeroy",
+                    fillcolor="rgba(16,185,129,0.12)",
+                    hovertemplate="%{x}: %{y:.1f}%<extra>Positive</extra>",
+                ))
+                fig.add_trace(go.Scatter(
+                    x=df_tl["period"], y=df_tl["negative_pct"],
+                    name="Negative", mode="lines",
+                    line=dict(color=COLORS["danger"], width=2),
+                    fill="tozeroy",
+                    fillcolor="rgba(239,68,68,0.10)",
+                    hovertemplate="%{x}: %{y:.1f}%<extra>Negative</extra>",
+                ))
+                # Net sentiment line
+                fig.add_trace(go.Scatter(
+                    x=df_tl["period"], y=df_tl["net_sentiment"],
+                    name="Net sentiment", mode="lines+markers",
+                    line=dict(color=COLORS["accent"], width=2.5, dash="dot"),
+                    marker=dict(size=5),
+                    hovertemplate="%{x}: %{y:.1f}pp<extra>Net</extra>",
+                ))
+                # Zero line
+                fig.add_hline(y=0, line_color=COLORS["border"], line_width=1)
+
+                fig.update_layout(
+                    **PLOTLY_TEMPLATE["layout"],
+                    title=dict(text="Sentiment over time", font=dict(size=14), x=0),
+                    height=340,
+                    hovermode="x unified",
+                    legend=dict(bgcolor="rgba(0,0,0,0)", orientation="h",
+                                yanchor="bottom", y=1.02, xanchor="right", x=1),
+                    yaxis_title="% of feedback",
+                    margin=dict(l=10, r=10, t=40, b=10),
+                )
+                st.plotly_chart(fig, use_container_width=True,
+                                config={"displayModeBar": False})
+
+                # Volume bars
+                fig2 = go.Figure(go.Bar(
+                    x=df_tl["period"], y=df_tl["total_count"],
+                    marker_color=COLORS["accent"],
+                    opacity=0.6,
+                    hovertemplate="%{x}: %{y} tickets<extra></extra>",
+                ))
+                fig2.update_layout(
+                    **PLOTLY_TEMPLATE["layout"],
+                    title=dict(text="Feedback volume", font=dict(size=13), x=0),
+                    height=160,
+                    showlegend=False,
+                    margin=dict(l=10, r=10, t=35, b=10),
+                )
+                st.plotly_chart(fig2, use_container_width=True,
+                                config={"displayModeBar": False})
+
+    # ════════════════════════════════════════════════════════
+    # TAB 3 — Breakdown
+    # ════════════════════════════════════════════════════════
+    with tab_breakdown:
+        with st.spinner("Loading sentiment breakdown..."):
+            summ_data, summ_err = api_get("/nlp/sentiment/summary")
+
+        if summ_err or not summ_data:
+            st.error(f"Summary error: {summ_err}")
+            return
+
+        col_overall, col_channel = st.columns(2)
+
+        with col_overall:
+            # Overall donut
+            overall = summ_data.get("overall", {})
+            if overall:
+                fig = go.Figure(go.Pie(
+                    labels=list(overall.keys()),
+                    values=list(overall.values()),
+                    hole=0.55,
+                    marker=dict(
+                        colors=[
+                            COLORS["accent2"] if k == "positive"
+                            else COLORS["danger"] if k == "negative"
+                            else COLORS["muted"]
+                            for k in overall.keys()
+                        ],
+                        line=dict(color=COLORS["bg"], width=2),
+                    ),
+                    textfont=dict(color=COLORS["text"]),
+                    hovertemplate="<b>%{label}</b>: %{value:.1f}%<extra></extra>",
+                ))
+                fig.update_layout(
+                    **PLOTLY_TEMPLATE["layout"],
+                    title=dict(text="Overall sentiment", font=dict(size=14), x=0),
+                    height=280,
+                    legend=dict(bgcolor="rgba(0,0,0,0)", orientation="v"),
+                    margin=dict(l=10, r=10, t=40, b=10),
+                )
+                st.plotly_chart(fig, use_container_width=True,
+                                config={"displayModeBar": False})
+
+        with col_channel:
+            # Negative rate by channel
+            by_channel = summ_data.get("by_channel", {})
+            if by_channel:
+                channels   = list(by_channel.keys())
+                neg_rates  = [by_channel[ch].get("negative", 0) for ch in channels]
+                fig2 = go.Figure(go.Bar(
+                    x=channels, y=neg_rates,
+                    marker=dict(
+                        color=neg_rates,
+                        colorscale=[[0, COLORS["accent2"]], [1, COLORS["danger"]]],
+                    ),
+                    text=[f"{v:.0f}%" for v in neg_rates],
+                    textposition="outside",
+                    textfont=dict(color=COLORS["text"]),
+                    hovertemplate="<b>%{x}</b><br>Negative: %{y:.1f}%<extra></extra>",
+                ))
+                fig2.update_layout(
+                    **PLOTLY_TEMPLATE["layout"],
+                    title=dict(text="Negative rate by channel", font=dict(size=14), x=0),
+                    height=280,
+                    showlegend=False,
+                    margin=dict(l=10, r=10, t=40, b=10),
+                )
+                st.plotly_chart(fig2, use_container_width=True,
+                                config={"displayModeBar": False})
+
+        # Category breakdown heatmap-style bars
+        by_category = summ_data.get("by_category", {})
+        if by_category:
+            st.markdown('<div class="sg-section-header" style="margin-top:1rem;">'
+                        'Sentiment by category</div>', unsafe_allow_html=True)
+
+            for cat, dist in by_category.items():
+                pos = dist.get("positive", 0)
+                neg = dist.get("negative", 0)
+                neu = dist.get("neutral", 0)
+                st.markdown(f"""
+                <div class="sg-card" style="padding:0.7rem 1rem;">
+                    <div style="display:flex;justify-content:space-between;
+                                align-items:center;margin-bottom:6px;">
+                        <span style="font-size:0.83rem;font-weight:500;">
+                            {cat.replace("_"," ").title()}
+                        </span>
+                        <span style="font-size:0.75rem;color:{COLORS['muted']};">
+                            <span style="color:{COLORS['accent2']};">+{pos:.0f}%</span>
+                            &nbsp;
+                            <span style="color:{COLORS['danger']}">{neg:.0f}%</span>
+                        </span>
+                    </div>
+                    <div style="display:flex;height:6px;border-radius:100px;overflow:hidden;">
+                        <div style="width:{pos}%;background:{COLORS['accent2']};"></div>
+                        <div style="width:{neu}%;background:{COLORS['muted']};opacity:0.4;"></div>
+                        <div style="width:{neg}%;background:{COLORS['danger']};"></div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 def main():
     inject_css()
@@ -1020,6 +1376,9 @@ def main():
         page_high_risk()
     elif page == "Batch":
         page_batch()
+    elif page == "NLP Insights":
+        page_nlp()
+
 
 
 if __name__ == "__main__":
