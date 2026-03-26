@@ -74,7 +74,20 @@ def semantic_search(
     """
     pipeline = _get_pipeline()
 
-    if pipeline.search_engine is None or not pipeline.search_engine.is_index_built():
+    # Check if search engine exists and is properly initialized
+    if pipeline is None:
+        raise HTTPException(
+            503,
+            detail="NLP pipeline not initialized. Run: python -m ml_models.nlp.pipeline"
+        )
+    
+    if pipeline.search_engine is None:
+        raise HTTPException(
+            503,
+            detail="Search engine not initialized. Run: python -m ml_models.nlp.pipeline"
+        )
+    
+    if not pipeline.search_engine.is_index_built():
         raise HTTPException(
             503,
             detail="Search index not built. Run: python -m ml_models.nlp.pipeline"

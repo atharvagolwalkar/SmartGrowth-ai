@@ -32,7 +32,7 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 _DEFAULT_MODEL   = "all-MiniLM-L6-v2"
-_DEFAULT_DB_PATH = str(Path(__file__).parent / "artifacts" / "chroma_db")
+_DEFAULT_DB_PATH = str(Path(__file__).resolve().parent / "artifacts" / "chroma_db")
 _COLLECTION_NAME = "customer_feedback"
 
 
@@ -221,6 +221,8 @@ class SemanticSearchEngine:
         self._load_model()
         if self.collection is None:
             self._init_chroma()
+        if self.collection.count() == 0:
+            raise Exception("ChromaDB index is empty. Run pipeline first.")
 
         query_embedding = self.model.encode([query], convert_to_numpy=True).tolist()
 
@@ -255,12 +257,14 @@ class SemanticSearchEngine:
                 **{k: v for k, v in meta.items()},
             })
 
-        seen_texts = {}
-        for item in output:
-            text = item["feedback_text"]
-            if text not in seen_texts or item["similarity_score"] > seen_texts[text]["similarity_score"]:
-                seen_texts[text] = item
-        return list(seen_texts.values())[:top_k]
+        # seen_texts = {}
+        # for item in output:
+        #     text = item["feedback_text"]
+        #     if text not in seen_texts or item["similarity_score"] > seen_texts[text]["similarity_score"]:
+        #         seen_texts[text] = item
+        # return list(seen_texts.values())[:top_k]
+    # Return all results up to top_k (no deduplication - show all matches)
+        return output[:top_k]
 
     def _search_tfidf(self, query: str, top_k: int) -> list[dict]:
         from sklearn.metrics.pairwise import cosine_similarity
@@ -282,26 +286,87 @@ class SemanticSearchEngine:
     def is_index_built(self) -> bool:
         """Check if a persistent index exists on disk."""
         try:
-            self._init_backend()
-            if self.backend == "chromadb":
+            # First check: does chroma_db folder exist?
+            if not Path(self.db_path).exists():
+                logger.info(f"  ChromaDB path doesn't exist: {self.db_path}")
+                return False
+            
+            # Check if chromadb is available
+            try:
                 import chromadb
-                if not Path(self.db_path).exists():
-                    return False
-                client = chromadb.PersistentClient(path=self.db_path)
-                col = client.get_or_create_collection(_COLLECTION_NAME)
-                return col.count() > 0
-        except Exception:
-            pass
-        return False
+            except ImportError:
+                logger.info("  ChromaDB not installed, checking for feedback files...")
+                # Fallback: check if parquet exists
+                feedback_path = Path(__file__).parent / "artifacts" / "feedback_scored.parquet"
+                return feedback_path.exists()
+            
+            # Try to connect to ChromaDB
+            client = chromadb.PersistentClient(path=self.db_path)
+            col = client.get_or_create_collection(_COLLECTION_NAME)
+            doc_count = col.count()
+            has_docs = doc_count > 0
+            logger.info(f"  ChromaDB check: {doc_count} documents, index_built={has_docs}")
+            return has_docs
+            
+        except Exception as e:
+            logger.info(f"  ChromaDB check failed: {e}")
+            # Check for parquet as fallback
+            try:
+                feedback_path = Path(__file__).parent / "artifacts" / "feedback_scored.parquet"
+                exists = feedback_path.exists()
+                logger.info(f"  Feedback parquet exists: {exists}")
+                return exists
+            except Exception as e2:
+                logger.warning(f"  Fallback check failed: {e2}")
+                return False
 
     def load_existing_index(self) -> "SemanticSearchEngine":
-        """Load an already-built ChromaDB index from disk."""
+        """Load an already-built index from disk (ChromaDB, TF-IDF, or simple fallback)."""
         self.backend = self._init_backend()
+        logger.info(f"Initializing search backend: {self.backend}")
+        
         if self.backend == "chromadb":
-            self._load_model()
-            self._init_chroma()
-            logger.info(f"Loaded existing index: {self.collection.count()} docs")
+            try:
+                self._load_model()
+                self._init_chroma()
+                logger.info(f"Loaded ChromaDB index: {self.collection.count()} docs")
+            except Exception as e:
+                logger.warning(f"ChromaDB loading failed: {e}. Trying TF-IDF fallback...")
+                self.backend = "tfidf"
+        
+        if self.backend == "tfidf":
+            try:
+                from sklearn.feature_extraction.text import TfidfVectorizer
+                feedback_path = Path(__file__).parent / "artifacts" / "feedback_scored.parquet"
+                if feedback_path.exists():
+                    self._fallback_df = pd.read_parquet(feedback_path)
+                    logger.info(f"Loaded TF-IDF index from parquet: {len(self._fallback_df)} docs")
+                    self._build_tfidf_from_df(self._fallback_df)
+                else:
+                    logger.warning("Feedback parquet not found for TF-IDF index")
+            except Exception as e:
+                logger.warning(f"TF-IDF loading failed: {e}")
+                self.backend = "none"
+        
+        if self.backend == "none":
+            # Load raw feedback for simple string matching
+            feedback_path = Path(__file__).parent / "artifacts" / "feedback_scored.parquet"
+            if feedback_path.exists():
+                self._fallback_df = pd.read_parquet(feedback_path)
+                logger.warning(f"Using basic fallback: {len(self._fallback_df)} docs (no ML features)")
+        
         return self
+
+    def _build_tfidf_from_df(self, df: pd.DataFrame) -> None:
+        """Build TF-IDF index from existing dataframe."""
+        try:
+            from sklearn.feature_extraction.text import TfidfVectorizer
+            texts = df["feedback_text"].tolist()
+            self._fallback_tfidf = TfidfVectorizer(max_features=100, stop_words="english")
+            self._fallback_matrix = self._fallback_tfidf.fit_transform(texts)
+            logger.info("TF-IDF vectorizer fitted successfully")
+        except Exception as e:
+            logger.warning(f"TF-IDF fitting failed: {e}")
 
     def get_index_stats(self) -> dict:
         if self.backend == "chromadb" and self.collection:
@@ -319,12 +384,15 @@ _search_engine: Optional[SemanticSearchEngine] = None
 
 def get_search_engine() -> SemanticSearchEngine:
     global _search_engine
+
     if _search_engine is None:
         _search_engine = SemanticSearchEngine()
-        if _search_engine.is_index_built():
+        try:
             _search_engine.load_existing_index()
-        else:
-            logger.warning("Search index not built. Run: python -m ml_models.nlp.pipeline")
+            logger.info("Search index loaded successfully.")
+        except Exception as e:
+            logger.error(f"Failed to load search index: {e}")
+
     return _search_engine
 
 

@@ -118,22 +118,30 @@ def home():
 
 @app.on_event("startup")
 async def startup_event():
-    # ... your existing startup code ...
-
-    # Pre-load forecast pipeline
+    # Forecast pipeline
     try:
         from ml_models.forecasting import get_forecast_pipeline
         get_forecast_pipeline()
         logger.info("Forecast pipeline loaded.")
     except Exception as e:
         logger.warning(f"Forecast pipeline not ready: {e}")
-    
+
+    # NLP pipeline (sentiment etc.)
     try:
         from ml_models.nlp import get_nlp_pipeline
         get_nlp_pipeline()
         logger.info("NLP pipeline loaded.")
     except Exception as e:
         logger.warning(f"NLP pipeline not ready: {e}")     
+
+    # ✅ ADD THIS BLOCK (IMPORTANT)
+    try:
+        from ml_models.nlp.semantic_search import get_search_engine
+        engine = get_search_engine()
+        engine.load_existing_index()
+        logger.info("Semantic search index loaded.")
+    except Exception as e:
+        logger.error(f"Search engine failed to load: {e}")
 
 
 @app.get("/health")

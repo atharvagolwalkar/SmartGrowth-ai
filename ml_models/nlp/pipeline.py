@@ -267,10 +267,15 @@ def get_nlp_pipeline() -> NLPPipeline:
     global _nlp_pipeline
     if _nlp_pipeline is None:
         _nlp_pipeline = NLPPipeline()
-        if _STATS_FILE.exists():
-            _nlp_pipeline.load()
-        else:
-            logger.warning("NLP pipeline not built. Run: python -m ml_models.nlp.pipeline")
+        try:
+            if _STATS_FILE.exists():
+                logger.info("Loading NLP pipeline from artifacts...")
+                _nlp_pipeline.load()
+                logger.info("NLP pipeline loaded successfully.")
+            else:
+                logger.warning("NLP pipeline not built. Run: python -m ml_models.nlp.pipeline")
+        except Exception as e:
+            logger.error(f"Failed to load NLP pipeline: {e}")
     return _nlp_pipeline
 
 

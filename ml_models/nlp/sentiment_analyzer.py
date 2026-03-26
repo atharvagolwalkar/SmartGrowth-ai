@@ -28,7 +28,7 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-_HF_MODEL    = "cardiffnlp/twitter-roberta-base-sentiment"
+_HF_MODEL    = "distilbert-base-uncased-finetuned-sst-2-english"
 _VADER_MODEL = "vader"
 
 
@@ -81,17 +81,22 @@ class SentimentAnalyzer:
         return self
 
     def _load_roberta(self) -> None:
-        from transformers import pipeline as hf_pipeline
-        logger.info(f"Loading {_HF_MODEL} (first run downloads ~500MB)...")
-        self.pipeline = hf_pipeline(
-            "sentiment-analysis",
-            model=_HF_MODEL,
-            tokenizer=_HF_MODEL,
-            max_length=128,
-            truncation=True,
-            device=-1,   # CPU; change to 0 for GPU
-        )
-        logger.info("RoBERTa sentiment model loaded.")
+        try:
+            from transformers import pipeline as hf_pipeline
+            logger.info(f"Loading {_HF_MODEL} (first run downloads ~250MB)...")
+            self.pipeline = hf_pipeline(
+                "sentiment-analysis",
+                model=_HF_MODEL,
+                tokenizer=_HF_MODEL,
+                max_length=128,
+                truncation=True,
+                device=-1,   # CPU; change to 0 for GPU
+            )
+            logger.info("DistilBERT sentiment model loaded.")
+        except Exception as e:
+            logger.warning(f"RoBERTa loading failed: {e}. Falling back to VADER...")
+            self.backend = "vader"
+            self._load_vader()
 
     def _load_vader(self) -> None:
         import nltk
