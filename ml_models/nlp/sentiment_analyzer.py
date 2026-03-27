@@ -237,13 +237,13 @@ class SentimentAnalyzer:
         work[date_col] = pd.to_datetime(work[date_col])
         work["period"] = work[date_col].dt.to_period(freq)
 
-        agg = work.groupby("period").apply(lambda g: pd.Series({
+        agg = work.groupby("period", group_keys=False).apply(lambda g: pd.Series({
             "positive_pct": (g[label_col] == "positive").mean() * 100,
             "negative_pct": (g[label_col] == "negative").mean() * 100,
             "neutral_pct":  (g[label_col] == "neutral").mean()  * 100,
             "avg_score":     g[score_col].mean() if score_col in g.columns else 0.5,
             "total_count":   len(g),
-        }), include_groups=False).reset_index()
+        })).reset_index()
 
         agg["net_sentiment"] = agg["positive_pct"] - agg["negative_pct"]
         agg["period_str"]    = agg["period"].astype(str)
