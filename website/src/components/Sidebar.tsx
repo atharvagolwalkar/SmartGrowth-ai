@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { LayoutDashboard, Users, TrendingUp, MessageSquare, AlertTriangle, Layers, Menu, X, Activity, Zap } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -20,13 +20,55 @@ interface Props {
 
 export default function Sidebar({ active, onChange, apiOnline }: Props) {
   const [open, setOpen] = useState(false)
+  const [isDesktop, setIsDesktop] = useState(false)
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(min-width: 768px)')
+
+    const syncLayout = (matches: boolean) => {
+      setIsDesktop(matches)
+      setOpen(matches)
+    }
+
+    syncLayout(mediaQuery.matches)
+
+    const handleMediaChange = (event: MediaQueryListEvent) => {
+      syncLayout(event.matches)
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpen(false)
+      }
+    }
+
+    mediaQuery.addEventListener('change', handleMediaChange)
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      mediaQuery.removeEventListener('change', handleMediaChange)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [])
+
+  useEffect(() => {
+    document.body.style.overflow = open && !isDesktop ? 'hidden' : ''
+
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [isDesktop, open])
 
   return (
     <>
       {/* Mobile toggle */}
       <button
-        onClick={() => setOpen(!open)}
-        className="fixed top-4 left-4 z-50 md:hidden bg-surface border border-border rounded-lg p-2"
+        type="button"
+        aria-label={open ? 'Close navigation menu' : 'Open navigation menu'}
+        aria-expanded={open}
+        aria-controls="app-sidebar"
+        onClick={() => setOpen((current) => !current)}
+        className="fixed top-4 left-4 z-50 bg-surface border border-border rounded-lg p-2"
       >
         {open ? <X size={18} /> : <Menu size={18} />}
       </button>
@@ -37,12 +79,14 @@ export default function Sidebar({ active, onChange, apiOnline }: Props) {
       )}
 
       {/* Sidebar */}
-      <aside className={clsx(
-        'fixed left-0 top-0 h-full z-40 w-60 bg-surface border-r border-border',
-        'flex flex-col transition-transform duration-300',
-        'md:translate-x-0',
-        open ? 'translate-x-0' : '-translate-x-full'
-      )}>
+      <aside
+        id="app-sidebar"
+        className={clsx(
+          'fixed left-0 top-0 h-full z-40 w-60 bg-surface border-r border-border',
+          'flex flex-col transition-transform duration-300',
+          open ? 'translate-x-0 pointer-events-auto' : '-translate-x-full pointer-events-none'
+        )}
+      >
 
         {/* Logo */}
         <div className="p-6 border-b border-border">
