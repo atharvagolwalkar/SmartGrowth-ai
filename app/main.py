@@ -54,6 +54,7 @@ app.include_router(nlp_router, prefix="/nlp", tags=["NLP"])
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000",
+        "https://smartgrowth-ai.vercel.app/",
         "https://*.vercel.app",
         "https://handhelds-cooling-gale-consistently.trycloudflare.com",   # ← Add this
         "https://*.trycloudflare.com",                                   # ← Add this too
