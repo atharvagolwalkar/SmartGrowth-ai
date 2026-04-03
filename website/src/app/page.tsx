@@ -1,11 +1,11 @@
 'use client'
 import { useEffect, useState } from 'react'
-import Sidebar from '../components/Sidebar'
-import Overview from '../components/Overview'
-import Forecast from '../components/Forecast'
-import NLPInsights from '../components/NLPInsights'
-import { CustomerAnalysis, HighRisk, BatchPredict } from '../components/Pages'
-import { api } from '../lib/api'
+import Sidebar from '@/components/Sidebar'
+import Overview from '@/components/Overview'
+import Forecast from '@/components/Forecast'
+import NLPInsights from '@/components/NLPInsights'
+import { CustomerAnalysis, HighRisk, BatchPredict } from '@/components/Pages'
+import { api } from '@/lib/api'
 
 export default function Home() {
   const [page,      setPage]      = useState('overview')

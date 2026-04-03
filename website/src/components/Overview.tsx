@@ -2,8 +2,8 @@
 import { useEffect, useState } from 'react'
 import { Users, TrendingDown, DollarSign, Clock, AlertTriangle } from 'lucide-react'
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
-import { api, Customer } from '../lib/api'
-import { StatCard, SectionHeader, Spinner, ErrorState } from '../components/UI'
+import { api, Customer } from '@/lib/api'
+import { StatCard, SectionHeader, Spinner, ErrorState } from '@/components/UI'
 
 const CHART_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6']
 

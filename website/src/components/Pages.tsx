@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
-import { api, HighRiskCustomer, ChurnPrediction } from '../lib/api'
-import { SectionHeader, Spinner, ErrorState, RiskBadge, RiskBar, DataRow, StatCard } from '../components/UI'
+import { api, HighRiskCustomer, ChurnPrediction } from '@/lib/api'
+import { SectionHeader, Spinner, ErrorState, RiskBadge, RiskBar, DataRow, StatCard } from '@/components/UI'
 import { Search, AlertTriangle, Download, DollarSign, Users } from 'lucide-react'
 
 // ── Customer Analysis ─────────────────────────────────────────────────────────
