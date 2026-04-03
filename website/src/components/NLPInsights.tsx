@@ -1,8 +1,8 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
-import { api, NLPSearchResult, NLPTimelinePoint } from '@/lib/api'
-import { StatCard, SectionHeader, Spinner, ErrorState, TabBar } from '@/components/UI'
+import { api, NLPSearchResult, NLPTimelinePoint } from '../lib/api'
+import { StatCard, SectionHeader, Spinner, ErrorState, TabBar } from '../components/UI'
 import { Search, MessageSquare, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 
 const SUGGESTIONS = ['billing problem', 'slow internet', 'great support', 'cancel service', 'refund request']

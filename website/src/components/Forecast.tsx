@@ -1,8 +1,8 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { AreaChart, Area, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
-import { api, ForecastResponse, ForecastAllResponse, ForecastMetrics } from '@/lib/api'
-import { StatCard, SectionHeader, Spinner, ErrorState, TabBar } from '@/components/UI'
+import { api, ForecastResponse, ForecastAllResponse, ForecastMetrics } from '../lib/api'
+import { StatCard, SectionHeader, Spinner, ErrorState, TabBar } from '../components/UI'
 import { TrendingUp, Target, Zap, Clock } from 'lucide-react'
 
 const CustomTooltip = ({ active, payload, label }: any) => {
