@@ -53,7 +53,12 @@ app.include_router(nlp_router, prefix="/nlp", tags=["NLP"])
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.api.cors_origins,
+    allow_origins=["http://localhost:3000",
+        "https://*.vercel.app",
+        "https://handhelds-cooling-gale-consistently.trycloudflare.com",   # ← Add this
+        "https://*.trycloudflare.com",                                   # ← Add this too
+        "https://*.streamlit.app",
+        ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
